@@ -3,6 +3,7 @@
 set -euo pipefail
 
 OUT_DIR=".dockerclaude"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MAX_DEPTH=${MAX_DEPTH:-6}
 DEFAULT_NODE_MAJOR=${DEFAULT_NODE_MAJOR:-24}
 
@@ -20,7 +21,6 @@ PROJECT_FILE_NAMES=(package.json 'tsconfig*.json' package-lock.json npm-shrinkwr
   pnpm-workspace.yaml yarn.lock bun.lock bun.lockb pyproject.toml uv.lock)
 HOST_EXEC_PATHS=(.claude .mcp.json .envrc .vscode .devcontainer .husky .githooks .pre-commit-config.yaml)
 TOKEN_MOUNT=/run/claude-token
-BASE_DOMAINS=(api.anthropic.com claude.ai platform.claude.com registry.npmjs.org)
 
 CAND_PATHS=()
 CAND_ON=()
@@ -327,8 +327,8 @@ host_uv_version() {
 }
 
 write_dockerfile() {
-  local node_major=$1 apk_packages=$2 package_manager=$3 uv_version=$4 claude_version=$5 firewall=$6
-  shift 6
+  local node_major=$1 apk_packages=$2 package_manager=$3 uv_version=$4 claude_version=$5
+  shift 5
   {
     printf 'FROM node:%s-alpine\n\n' "$node_major"
     printf 'RUN apk add --no-cache %s\n' "$apk_packages"
@@ -340,16 +340,9 @@ write_dockerfile() {
       printf ' %q' "$@"
       printf ' && chown -R node:node /workspace\n'
     fi
-    if [ "$firewall" = 1 ]; then
-      printf '\nCOPY init-firewall.sh entrypoint.sh /usr/local/bin/\n'
-      printf 'WORKDIR /workspace\n\n'
-      printf 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]\n'
-      printf 'CMD ["claude"]\n'
-    else
-      printf '\nCOPY entrypoint.sh /usr/local/bin/\n'
-      printf 'USER node\nWORKDIR /workspace\n\n'
-      printf 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]\n'
-    fi
+    printf '\nCOPY entrypoint.sh /usr/local/bin/\n'
+    printf 'USER node\nWORKDIR /workspace\n\n'
+    printf 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]\n'
   } >"$OUT_DIR/Dockerfile"
 }
 
@@ -357,86 +350,9 @@ write_entrypoint() {
   {
     printf '#!/bin/sh\nset -eu\n'
     printf '[ -r %s ] && export CLAUDE_CODE_OAUTH_TOKEN="$(cat %s)"\n' "$TOKEN_MOUNT" "$TOKEN_MOUNT"
-    if [ "$1" = 1 ]; then
-      printf '/usr/local/bin/init-firewall.sh\nexec su-exec node "$@"\n'
-    else
-      printf 'exec claude "$@"\n'
-    fi
+    printf 'exec claude "$@"\n'
   } >"$OUT_DIR/entrypoint.sh"
   chmod 755 "$OUT_DIR/entrypoint.sh"
-}
-
-write_firewall() {
-  cat >"$OUT_DIR/init-firewall.sh" <<'EOF'
-#!/bin/bash
-# Default-deny egress, modeled on the claude-code reference dev container.
-set -euo pipefail
-
-DOMAINS_FILE=/workspace/.dockerclaude/allowed-domains.txt
-IPV4_RE='^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$'
-
-add_ip() {
-  [[ "$1" =~ $IPV4_RE ]] && ipset add allowed "$1" -exist
-  return 0
-}
-
-ipset create allowed hash:net -exist
-ipset flush allowed
-
-while IFS= read -r line || [ -n "$line" ]; do
-  entry=${line%%#*}
-  entry=${entry//[[:space:]]/}
-  [ -n "$entry" ] || continue
-  if [ "$entry" = "@github" ]; then
-    while read -r cidr; do add_ip "$cidr"; done < <(curl -fsS --connect-timeout 10 https://api.github.com/meta |
-      jq -r '(.web + .api + .git)[]')
-    continue
-  fi
-  ips=$(dig +short A "$entry" | grep -E "$IPV4_RE" || true)
-  [ -n "$ips" ] || echo "Warning: could not resolve $entry"
-  for ip in $ips; do add_ip "$ip"; done
-done <"$DOMAINS_FILE"
-
-iptables -F
-iptables -A INPUT -i lo -j ACCEPT
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -m set --match-set allowed dst -j ACCEPT
-iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
-iptables -P INPUT DROP
-iptables -P FORWARD DROP
-iptables -P OUTPUT DROP
-
-ip6tables -F 2>/dev/null || true
-ip6tables -A INPUT -i lo -j ACCEPT 2>/dev/null || true
-ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
-for chain in INPUT FORWARD OUTPUT; do ip6tables -P "$chain" DROP 2>/dev/null || true; done
-
-if curl -fsS --connect-timeout 5 -o /dev/null https://example.com 2>/dev/null; then
-  echo "Firewall check failed: example.com is reachable"
-  exit 1
-fi
-if ! curl -sS --connect-timeout 10 -o /dev/null https://api.anthropic.com; then
-  echo "Firewall check failed: api.anthropic.com is unreachable"
-  exit 1
-fi
-echo "Firewall active. Allowlist: .dockerclaude/allowed-domains.txt"
-EOF
-  chmod 755 "$OUT_DIR/init-firewall.sh"
-}
-
-write_allowed_domains() {
-  local file="$OUT_DIR/allowed-domains.txt"
-  if [ -f "$file" ]; then
-    echo "Keeping existing $file"
-    return
-  fi
-  {
-    printf '# One domain per line. @github adds GitHub web/api/git ranges.\n'
-    printf '# Read at container start; restart the container after editing.\n'
-    printf '%s\n' "$@"
-  } >"$file"
 }
 
 write_settings() {
@@ -574,7 +490,7 @@ main() {
     if [ "${CAND_TAGS[$((i - 1))]}" = gitignore ]; then mask_modes+=(rw); else mask_modes+=(ro); fi
   done
 
-  local node_major apk_extra package_manager uv_version="" claude_version isolate_git=0 is_python=0
+  local node_major apk_extra package_manager uv_version="" claude_version isolate_git=0
   echo
   node_major=$(detect_node_major)
   claude_version=$(host_claude_version)
@@ -583,7 +499,6 @@ main() {
   apk_extra=""
   [ -f Makefile ] && apk_extra="make"
   if [ -f pyproject.toml ] || [ -f uv.lock ] || [ -f requirements.txt ]; then
-    is_python=1
     apk_extra=$(trim "$apk_extra python3")
     uv_version=$(host_uv_version)
   fi
@@ -602,16 +517,9 @@ main() {
     isolate_git=1
   fi
 
-  local firewall=0 domains=("${BASE_DOMAINS[@]}" @github) extra_domains
   echo "  Permission mode is auto (a classifier reviews each action)."
-  if confirm "Block network access, with a specific allowlist?" n; then
-    firewall=1
-    [ "$package_manager" != "${package_manager#yarn@}" ] && domains+=(repo.yarnpkg.com)
-    [ "$is_python" = 1 ] && domains+=(pypi.org files.pythonhosted.org)
-    extra_domains=$(ask "Extra allowed domains besides Anthropic, npm and GitHub (space separated, '-' for none)" "-")
-    # shellcheck disable=SC2206
-    [ "$extra_domains" != "-" ] && domains+=($extra_domains)
-  fi
+  local restrict_network=0
+  confirm "Allow unrestricted network access?" y || restrict_network=1
 
   local protect=() protect_project_claude=0
   while IFS= read -r path; do
@@ -701,9 +609,6 @@ main() {
     printf 'name: %s\n\nservices:\n  claude:\n    build: .\n' "$compose_project"
     printf '    working_dir: /workspace\n    stdin_open: true\n    tty: true\n'
     printf '    security_opt:\n      - no-new-privileges:true\n    cap_drop:\n      - ALL\n'
-    if [ "$firewall" = 1 ]; then
-      printf '    cap_add:\n      - NET_ADMIN\n      - NET_RAW\n      - SETUID\n      - SETGID\n'
-    fi
     printf '    volumes:\n'
     printf '      - %s\n' "${volume_lines[@]}"
     printf '\nvolumes:\n'
@@ -711,17 +616,12 @@ main() {
   } >"$OUT_DIR/compose.yml"
 
   local apk_packages="git bash ripgrep curl openssh-client${apk_extra:+ $apk_extra}"
-  [ "$firewall" = 1 ] && apk_packages+=" iptables ip6tables ipset bind-tools jq su-exec"
   write_dockerfile "$node_major" "$(trim "$apk_packages")" "$package_manager" "$uv_version" \
-    "$claude_version" "$firewall" ${owned_targets[@]+"${owned_targets[@]}"}
-  if [ "$firewall" = 1 ]; then
-    write_firewall
-    write_allowed_domains "${domains[@]}"
-  else
-    rm -f "$OUT_DIR/init-firewall.sh"
-  fi
-  write_entrypoint "$firewall"
+    "$claude_version" ${owned_targets[@]+"${owned_targets[@]}"}
+  rm -f "$OUT_DIR/init-firewall.sh"
+  write_entrypoint
   write_settings
+  [ "$restrict_network" = 1 ] && "$SCRIPT_DIR/add-firewall.sh" --defaults
 
   echo
   setup_makefile "$compose_project"
@@ -729,11 +629,12 @@ main() {
   echo
   echo "${bold}Done.${reset} Created $OUT_DIR/Dockerfile, $OUT_DIR/compose.yml and $OUT_DIR/settings.json"
   echo "Hidden from the container: ${#masks[@]} path(s). Read-only for host-run config: ${#protect[@]} path(s)."
-  if [ "$firewall" = 1 ]; then
-    echo "Network: allowlist in $OUT_DIR/allowed-domains.txt, auto mode."
+  if [ "$restrict_network" = 1 ]; then
+    echo "Network: restricted to Anthropic, npm and GitHub, auto mode."
   else
     echo "Network: unrestricted, auto mode."
   fi
+  echo "Run add-firewall.sh any time for a detailed allowlist setup."
   echo "Still writable: Makefile, package.json scripts and other project files. Review diffs before running them on the host."
   echo
   echo "Start:    docker compose -f $OUT_DIR/compose.yml run --rm claude   (or: make dockerclaude)"
