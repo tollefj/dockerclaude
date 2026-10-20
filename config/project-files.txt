@@ -1,0 +1,12 @@
+# example file
+package.json
+tsconfig*.json
+package-lock.json
+npm-shrinkwrap.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+yarn.lock
+bun.lock
+bun.lockb
+pyproject.toml
+uv.lock

@@ -1,0 +1,6 @@
+# Always allowed by add-firewall.sh. @github adds GitHub web/api/git ranges. One entry per line.
+api.anthropic.com
+claude.ai
+platform.claude.com
+registry.npmjs.org
+@github

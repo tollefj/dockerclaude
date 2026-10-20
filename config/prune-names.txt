@@ -1,0 +1,18 @@
+# directories never scanned
+.git
+node_modules
+.venv
+venv
+dist
+build
+out
+.next
+.nuxt
+.turbo
+.cache
+coverage
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.terraform

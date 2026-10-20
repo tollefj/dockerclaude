@@ -7,19 +7,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MAX_DEPTH=${MAX_DEPTH:-6}
 DEFAULT_NODE_MAJOR=${DEFAULT_NODE_MAJOR:-24}
 
-PRUNE_NAMES=(.git node_modules .venv venv dist build out .next .nuxt .turbo .cache coverage
-  __pycache__ .pytest_cache .mypy_cache .ruff_cache .terraform "$OUT_DIR")
-SECRET_DIR_NAMES=(env .env secrets secret certs .aws .ssh .gnupg .kube '*backup*' '*dump*')
-SECRET_FILE_NAMES=(.env '.env.*' '*.env' '*.pem' '*.key' '*.p12' '*.pfx' '*.jks' '*.keystore'
-  'id_rsa*' 'id_ed25519*' 'id_ecdsa*' 'secret.*' 'secrets.*' '*-secret.*' '*_secret.*'
-  '*secret*.yaml' '*secret*.yml' '*secret*.json' 'credentials' 'credentials.*' 'service-account*.json'
-  .npmrc .netrc .pypirc kubeconfig '*.kubeconfig' '*.tfstate' '*.tfstate.*' '*.tfvars'
-  '*.sqlite' '*.sqlite3' '*.dump' '*.bak')
-SAFE_SUFFIXES=(.example .sample .template .dist)
-NOISE_PATTERNS=(.DS_Store Thumbs.db '*.log' '*.tsbuildinfo' '*.swp' '*.swo' '*.pyc' .idea .vscode)
-PROJECT_FILE_NAMES=(package.json 'tsconfig*.json' package-lock.json npm-shrinkwrap.json pnpm-lock.yaml
-  pnpm-workspace.yaml yarn.lock bun.lock bun.lockb pyproject.toml uv.lock)
-HOST_EXEC_PATHS=(.claude .mcp.json .envrc .vscode .devcontainer .husky .githooks .pre-commit-config.yaml)
+CONFIG_DIR="$SCRIPT_DIR/config"
 TOKEN_MOUNT=/run/claude-token
 
 CAND_PATHS=()
@@ -29,6 +17,27 @@ CAND_TAGS=()
 bold=$'\033[1m'
 dim=$'\033[2m'
 reset=$'\033[0m'
+
+read_list() {
+  sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' "$CONFIG_DIR/$1.txt"
+}
+
+load_list() {
+  local array=$1 line
+  eval "$array=()"
+  while IFS= read -r line; do
+    eval "$array+=(\"\$line\")"
+  done < <(read_list "$2")
+}
+
+load_list PRUNE_NAMES prune-names
+PRUNE_NAMES+=("$OUT_DIR")
+load_list SECRET_DIR_NAMES secret-dirs
+load_list SECRET_FILE_NAMES secret-files
+load_list SAFE_SUFFIXES safe-suffixes
+load_list NOISE_PATTERNS noise-patterns
+load_list PROJECT_FILE_NAMES project-files
+load_list HOST_EXEC_PATHS host-exec-paths
 
 prune_expr=()
 for name in "${PRUNE_NAMES[@]}"; do prune_expr+=(-o -name "$name"); done

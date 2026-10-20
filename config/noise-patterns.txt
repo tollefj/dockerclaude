@@ -1,0 +1,10 @@
+# Ignored when reading gitignore matches instead
+.DS_Store
+Thumbs.db
+*.log
+*.tsbuildinfo
+*.swp
+*.swo
+*.pyc
+.idea
+.vscode

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 OUT_DIR=".dockerclaude"
-BASE_DOMAINS=(api.anthropic.com claude.ai platform.claude.com registry.npmjs.org @github)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 FIREWALL_PACKAGES="iptables ip6tables ipset bind-tools jq su-exec"
 
 ask() {
@@ -26,7 +26,9 @@ require_generated_setup() {
 }
 
 collect_domains() {
-  local domains=("${BASE_DOMAINS[@]}") extra
+  local domains=() extra line
+  while IFS= read -r line; do domains+=("$line"); done < <(
+    sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' "$SCRIPT_DIR/config/base-domains.txt")
   grep -q corepack "$OUT_DIR/Dockerfile" && domains+=(repo.yarnpkg.com)
   grep -q python3 "$OUT_DIR/Dockerfile" && domains+=(pypi.org files.pythonhosted.org)
   extra="-"

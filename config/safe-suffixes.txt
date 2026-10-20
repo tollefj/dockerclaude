@@ -1,0 +1,5 @@
+# secret-looking files
+.example
+.sample
+.template
+.dist

@@ -1,0 +1,10 @@
+# Files the host may execute later
+# read-only mounts.
+.claude
+.mcp.json
+.envrc
+.vscode
+.devcontainer
+.husky
+.githooks
+.pre-commit-config.yaml
