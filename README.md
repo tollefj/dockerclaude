@@ -19,4 +19,4 @@ optional allowlist (edit `.dockerclaude/allowed-domains.txt`):
 ~/.dockerclaude-tools/add-firewall.sh
 ```
 
-hidden paths, host-exec mounts and firewall base domains are configured in `config/*.txt`, one entry per line.
+hidden paths/mounts/firewall domains etc are in `config/`
