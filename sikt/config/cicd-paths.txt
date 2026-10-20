@@ -1,0 +1,13 @@
+# CI/CD and security tooling config mounted read-only.
+.gitlab-ci.yml
+.gitlab
+.github
+Jenkinsfile
+CODEOWNERS
+.gitleaks.toml
+.gitleaksignore
+.semgrep.yml
+.semgrep
+.semgrepignore
+renovate.json
+sonar-project.properties

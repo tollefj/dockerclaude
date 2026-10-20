@@ -20,3 +20,5 @@ optional allowlist (edit `.dockerclaude/allowed-domains.txt`):
 ```
 
 hidden paths/mounts/firewall domains etc are in `config/`
+
+sikt security profile (audit log, agent-check, managed settings): run `~/.dockerclaude-tools/init-dockerclaude-sikt.sh` instead of the init script. its lists live in `sikt/config/*.txt`.

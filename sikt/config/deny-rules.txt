@@ -1,0 +1,4 @@
+# Managed permission rules that are always denied.
+Bash(sudo *)
+Read(//proc/*/environ)
+Read(//root/**)

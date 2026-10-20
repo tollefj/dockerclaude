@@ -1,0 +1,5 @@
+# Agent instruction files mounted read-only.
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.cursorrules

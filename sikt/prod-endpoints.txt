@@ -1,0 +1,4 @@
+# Production hosts agent-check probes for reachability (control R1.7).
+# One <host> or <host>:<port> per line. Empty list reports NOT_TESTABLE.
+# <production-api-host>:443
+# <production-db-host>:5432

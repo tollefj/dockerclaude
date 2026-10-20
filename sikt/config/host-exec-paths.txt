@@ -1,0 +1,2 @@
+# Added to config/host-exec-paths.txt for the Sikt profile.
+Makefile
