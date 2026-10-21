@@ -6,7 +6,6 @@ OUT_DIR=".dockerclaude"
 # shellcheck source=lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-TOKEN_MOUNT=/run/claude-token
 MAKE_TARGETS=(dockerclaude dockerterm)
 COMPOSE_PROJECT=""
 
@@ -20,7 +19,7 @@ write_dockerfile() {
       printf ' %q' "${OWNED_TARGETS[@]}"
       printf ' && chown -R node:node /workspace\n'
     fi
-    printf '\nCOPY entrypoint.sh /usr/local/bin/\n'
+    printf '\nCOPY entrypoint.sh link-login.sh /usr/local/bin/\n'
     printf 'USER node\nWORKDIR /workspace\n\n'
     printf 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]\n'
   } >"$OUT_DIR/Dockerfile"
@@ -36,18 +35,19 @@ write_compose() {
     printf '    volumes:\n'
     printf '      - %s\n' "${VOLUME_LINES[@]}"
     printf '\nvolumes:\n'
-    printf '  %s:\n' "${NAMED_VOLUMES[@]}"
+    print_named_volumes
   } >"$OUT_DIR/compose.yml"
 }
 
 write_settings() {
   {
     # Bash sandbox stays off: bubblewrap needs user namespaces, which Docker's default seccomp profile blocks.
-    cat <<'EOF'
+    cat <<EOF
 {
   "permissions": {
     "defaultMode": "auto"
   },
+$(login_settings)
   "sandbox": {
     "enabled": false
   },
@@ -139,33 +139,19 @@ main() {
     fi
   fi
 
-  local token_path token_source=""
-  echo
-  echo "${bold}Authentication${reset}"
-  echo "  The container logs in with a token created on the host."
-  echo "  Open another terminal, run 'claude setup-token', and save the printed token to a file (e.g. ~/.claude-token)."
-  read -r -p "  Press Enter when the token file exists (or to continue without one) " _ || true
-  token_path=$(ask "Path to Claude OAuth token file from 'claude setup-token' ('-' to skip)" "~/.claude-token")
-  if [ "$token_path" != "-" ]; then
-    if [ -r "${token_path/#\~/$HOME}" ]; then
-      token_source="${token_path/#\~/$HOME}"
-    else
-      echo "  $token_path is not readable, skipping. Use /login inside Claude instead."
-    fi
-  fi
-
   COMPOSE_PROJECT="$(project_name)-claude"
   mkdir -p "$OUT_DIR"
 
   build_volumes
   VOLUME_LINES+=("$(yaml_quote "./settings.json:/etc/claude-code/managed-settings.json:ro")")
-  [ -n "$token_source" ] && VOLUME_LINES+=("$(yaml_quote "$token_source:$TOKEN_MOUNT:ro")")
 
   write_compose
+  ensure_auth_volume
   write_dockerfile "$node_major" "$(trim "git bash ripgrep curl openssh-client $apk_extra")" "$package_manager" \
     "$uv_version" "$claude_version"
   rm -f "$OUT_DIR/init-firewall.sh"
   install_file "$TEMPLATE_DIR/entrypoint.sh" entrypoint.sh
+  install_file "$TEMPLATE_DIR/link-login.sh" link-login.sh
   write_settings
   [ "$restrict_network" = 1 ] && "$ROOT_DIR/add-firewall.sh" --defaults
 
@@ -184,11 +170,7 @@ main() {
   echo "Still writable: Makefile, package.json scripts and other project files. Review diffs before running them on the host."
   echo
   echo "Start:    docker compose -f $OUT_DIR/compose.yml run --rm claude   (or: make dockerclaude)"
-  if [ -n "$token_source" ]; then
-    echo "Login:    token from $token_source is mounted read-only"
-  else
-    echo "Login:    run /login inside Claude the first time"
-  fi
+  echo "Login:    run /login inside Claude once; the login is shared by all projects (volume $AUTH_VOLUME)"
   echo "Upgrade:  docker compose -f $OUT_DIR/compose.yml build --no-cache"
   echo "Re-run this script to change what is hidden."
   if [ "${#NM_DIRS[@]}" -gt 0 ]; then

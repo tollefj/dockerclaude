@@ -14,7 +14,7 @@ PROD_ENV_RE='^(KUBECONFIG|AWS_|AZURE_|GOOGLE_APPLICATION_CREDENTIALS|CLOUDSDK_|V
 SECRET_FILE_ARGS=(-name .env -o -name '.env.*' -o -name '*.pem' -o -name '*.key' -o -name '*.p12'
   -o -name '*.pfx' -o -name 'id_rsa*' -o -name 'id_ed25519*' -o -name '*.tfstate' -o -name '*.tfvars'
   -o -name 'credentials*.json' -o -name 'service-account*.json' -o -name kubeconfig)
-EXPECTED_MOUNT_RE='^/(workspace|home/node|opt/audit|etc/claude-code|root/claude-token|sbin/docker-init|etc/hosts|etc/hostname|etc/resolv\.conf|tmp|run|proc|sys|dev)(/|$)|^/$'
+EXPECTED_MOUNT_RE='^/(workspace|home/node|opt/audit|etc/claude-code|opt/claude-auth|sbin/docker-init|etc/hosts|etc/hostname|etc/resolv\.conf|tmp|run|proc|sys|dev)(/|$)|^/$'
 
 declare -i passed=0 warned=0 failed=0 untestable=0
 brief=0
@@ -142,6 +142,7 @@ check_secrets() {
   for name in "${MODEL_CREDENTIALS[@]}"; do
     [ -n "${!name:-}" ] && evidence+=("$name: PRESENT (model access only)")
   done
+  [ -s /opt/claude-auth/.credentials.json ] && evidence+=("claude.ai login: PRESENT in shared volume, readable by the agent")
   [ "${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-0}" = 1 ] && evidence+=("subprocess credential scrub: on")
   if [ "${#bad[@]}" -gt 0 ]; then
     record FAIL R1.5 "Secrets not scoped to the task" "${bad[@]}" ${warn[@]+"${warn[@]}"}
@@ -242,7 +243,7 @@ check_tools() {
 
 check_lifetime() {
   record NOT_TESTABLE R1.12 "Credential lifetime not observable" "container is removed on exit" \
-    "model token expiry is not visible inside the container; rotate tokens from 'claude setup-token'"
+    "claude.ai login lifetime is not visible; revoke it from claude.ai or with 'docker volume rm dockerclaude-auth'"
 }
 
 check_checkpoints() {

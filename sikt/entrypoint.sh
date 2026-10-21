@@ -1,8 +1,8 @@
 #!/bin/sh
-# Runs as root only long enough to load the token and set up the firewall, then drops to node.
+# Runs as root only long enough to set up the firewall, then drops to node.
 set -eu
 
-[ -r /root/claude-token ] && CLAUDE_CODE_OAUTH_TOKEN="$(cat /root/claude-token)" && export CLAUDE_CODE_OAUTH_TOKEN
+su-exec node /usr/local/bin/link-login.sh
 [ "${AGENT_FIREWALL:-0}" = 1 ] && /usr/local/bin/init-firewall.sh
 
 if [ "${1:-}" = claude ]; then

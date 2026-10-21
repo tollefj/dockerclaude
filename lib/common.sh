@@ -7,6 +7,8 @@ CONFIG_DIR="$ROOT_DIR/config"
 TEMPLATE_DIR="$ROOT_DIR/templates"
 MAX_DEPTH=${MAX_DEPTH:-6}
 DEFAULT_NODE_MAJOR=${DEFAULT_NODE_MAJOR:-24}
+AUTH_VOLUME=dockerclaude-auth
+AUTH_DIR=/opt/claude-auth
 
 CAND_PATHS=()
 CAND_ON=()
@@ -449,6 +451,31 @@ build_volumes() {
   done
 
   VOLUME_LINES+=("$(yaml_quote "claude-home:/home/node")")
+  VOLUME_LINES+=("$(yaml_quote "$AUTH_VOLUME:$AUTH_DIR")")
+}
+
+host_org_uuid() {
+  command -v jq >/dev/null 2>&1 && jq -r '.oauthAccount.organizationUuid // empty' "$HOME/.claude.json" 2>/dev/null
+  return 0
+}
+
+login_settings() {
+  local org
+  org=$(host_org_uuid)
+  printf '  "forceLoginMethod": "claudeai",\n'
+  [ -n "$org" ] && printf '  "forceLoginOrgUUID": "%s",\n' "$org"
+  return 0
+}
+
+print_named_volumes() {
+  printf '  %s:\n' "${NAMED_VOLUMES[@]}"
+  printf '  %s:\n    external: true\n' "$AUTH_VOLUME"
+}
+
+ensure_auth_volume() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker volume inspect "$AUTH_VOLUME" >/dev/null 2>&1 || docker volume create "$AUTH_VOLUME" >/dev/null ||
+    echo "Could not create Docker volume $AUTH_VOLUME. Run: docker volume create $AUTH_VOLUME"
 }
 
 write_dockerfile_head() {
@@ -458,6 +485,7 @@ write_dockerfile_head() {
   [ -n "$uv_version" ] && printf 'COPY --from=ghcr.io/astral-sh/uv:%s /uv /uvx /usr/local/bin/\n' "$uv_version"
   [ -n "$package_manager" ] && package_manager_install "$package_manager"
   printf 'RUN npm install -g @anthropic-ai/claude-code@%s\n' "$claude_version"
+  printf 'RUN mkdir -p %s && chown node:node %s && chmod 700 %s\n' "$AUTH_DIR" "$AUTH_DIR" "$AUTH_DIR"
   return 0
 }
 

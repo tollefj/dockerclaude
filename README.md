@@ -21,6 +21,20 @@ optional allowlist (edit `.dockerclaude/allowed-domains.txt`):
 
 hidden paths/mounts/firewall domains etc are in `config/`
 
+## login
+
+first start shows the claude.ai login. run through it once and you stay logged in, in this and every other project. the login lives in the docker volume `dockerclaude-auth`, which all projects share.
+
+the generated settings only allow claude.ai accounts (no api key billing). if `jq` is installed and claude on the host is logged in, the init script also pins the login to the host's organization.
+
+the agent inside the container can read the login. to log out everywhere:
+
+```sh
+docker volume rm dockerclaude-auth
+```
+
+and revoke the session in your claude.ai settings if you want it fully gone.
+
 ___
 
 ## sikt profile
@@ -35,4 +49,4 @@ make dockercheck    # least-privilege report
 make dockerverify   # gitleaks, semgrep, osv-scanner on the host
 ```
 
-rules and paths are in `sikt/config/`.
+rules and paths are in `sikt/config/`. login works the same as above, and `make dockerreset` keeps it.
